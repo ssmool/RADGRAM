@@ -14,7 +14,7 @@
 RADGRAM is available on PyPI:
 
 ```bash
-pip install radgram_v1
+#pip install radgram_v1 [obs:underconstruction - please wait for release - have a nice day]
 ````
 
 ---
