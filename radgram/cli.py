@@ -1,3 +1,4 @@
+# radgram/cli.py
 import argparse, json
 from radgram.maestro.composer import compose, compose_to_db
 from radgram.maestro.instruments_db import MaestroInstrumentManager
@@ -11,6 +12,9 @@ from radgram.album.album_builder import create_album, add_track_file, album_from
 from radgram.pipeline.album_site import build_album_website
 from radgram.stream.base64_stream import get_album_stream_manifest
 from radgram.jam.session import create_jam, add_chord_event, add_note_event, list_jams
+
+# Importações dos novos módulos de extração e OpenVINO
+from radgram import InstrumentSampleSlicer, PhonemeExtractor, OpenVINOMusicCore
 
 def print_json(data): print(json.dumps(data, indent=2, ensure_ascii=False))
 
@@ -42,9 +46,31 @@ def main():
     t=sub.add_parser('trim'); t.add_argument('input'); t.add_argument('out'); t.add_argument('--seconds',type=int,default=15)
     d=sub.add_parser('drm'); d.add_argument('input'); d.add_argument('out')
     i=sub.add_parser('import-source'); i.add_argument('source'); i.add_argument('--ocr', action='store_true'); i.add_argument('--lang', default='eng'); i.add_argument('--out')
+    
+    # NOVOS COMANDOS ADICIONADOS AO CLI
+    es = sub.add_parser('extract-samples')
+    es.add_argument('--input', required=True, help='Input audio file path (e.g., solo_guitar.wav)')
+    es.add_argument('--instrument', required=True, help='Instrument name (e.g., Guitar, Sax)')
+    es.add_argument('--output', required=True, help='Output directory for samples')
+
+    ep = sub.add_parser('extract-phonemes')
+    ep.add_argument('--input', required=True, help='Input vocal track path (.mp3 or .ogg)')
+    ep.add_argument('--output', required=True, help='Output directory for phonemes')
+
+    co = sub.add_parser('compose-openvino')
+    co.add_argument('--prompt', required=True, help='Musical style prompt')
+    co.add_argument('--device', default='CPU', help='Hardware device (CPU, GPU, NPU)')
+
     sub.add_parser('export-db-json')
-    sub.add_parser('serve')
+    
+    # COMANDO SERVE ATUALIZADO COM SUPORTE A API
+    serve_parser = sub.add_parser('serve', help='Inicia a interface web ou o servidor da API')
+    serve_parser.add_argument('--api', action='store_true', help='Inicia o servidor FastAPI (para curl/URL)')
+    serve_parser.add_argument('--host', default='0.0.0.0', help='Endereço de host')
+    serve_parser.add_argument('--port', type=int, default=7860, help='Porta do servidor')
+    
     args=ap.parse_args()
+    
     if args.cmd=='init-db': Catalog(args.db); print(f'{args.db} created')
     elif args.cmd=='compose':
         if args.save_db:
@@ -76,9 +102,26 @@ def main():
     elif args.cmd=='import-source':
         data=import_music_source(args.source, ocr=args.ocr, lang=args.lang); text=json.dumps(data, indent=2, ensure_ascii=False)
         if args.out: open(args.out,'w',encoding='utf-8').write(text); print(args.out)
-        else: print(text)
+        else: print(text)  
+    elif args.cmd=='extract-samples':
+        slicer = InstrumentSampleSlicer()
+        print_json(slicer.slice_instrument_track(args.input, args.instrument, args.output))
+    elif args.cmd=='extract-phonemes':
+        extractor = PhonemeExtractor()
+        print_json(extractor.extract_phonemes_from_audio(args.input))
+    elif args.cmd=='compose-openvino':
+        core = OpenVINOMusicCore(device=args.device)
+        print_json(core.optimize_and_run_generation(args.prompt, style="OpenVINO Generated"))
+
     elif args.cmd=='export-db-json': print_json(Catalog(args.db).export_json())
     elif args.cmd=='serve':
-        from radgram.web.app import run; run()
+        if args.api:
+            import uvicorn
+            print(f"Iniciando API Radgram (FastAPI) em http://{args.host}:{args.port}...")
+            uvicorn.run("radgram.web.api:app", host=args.host, port=args.port, reload=True)
+        else:
+            from radgram.web.app import run
+            run()
     else: ap.print_help()
+
 if __name__=='__main__': main()
