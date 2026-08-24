@@ -319,3 +319,143 @@ print("Parsed Sheet Data:", sheet_data)
 python -m radgram.cli import-source score_sheet.pdf --ocr --lang eng --out exports/ocr_result.json
 
 ```
+
+Com base na estrutura de pastas da imagem que você enviou (que mostra diretórios cruciais como `audio`, `artgen`, `pipeline`, `stream`, etc.), podemos completar o manual cobrindo **absolutamente todos** os módulos restantes do Radgram.
+
+---
+
+# Radgram v0.3.0: Complete Developer Manual (Extended Modules)
+
+This final section covers the remaining internal directories visible in your project tree: **`audio`**, **`artgen`**, **`pipeline`**, **`stream`**, and **`export`**.
+
+---
+
+## 7. Additional Core Modules
+
+### A. Raw Audio Processing (`radgram.audio`)
+
+Handles low-level audio manipulations, format conversions, chunking, and buffer management before tracks reach the mastering or AI pipelines.
+
+* **Python Usage:**
+```python
+from radgram.audio.processor import load_audio_buffer, save_audio_buffer
+
+# Load, manipulate, and export audio buffers directly
+audio_data, sample_rate = load_audio_buffer("exports/raw_input.wav")
+print(f"Loaded audio at {sample_rate}Hz with shape: {audio_data.shape}")
+
+```
+
+
+
+---
+
+### B. AI Cover Art Generation (`radgram.artgen.cover_genai`)
+
+Automatically generates custom cover artwork for albums, tracks, or streaming manifests based on textual prompts and style descriptors.
+
+* **Python Usage:**
+```python
+from radgram.artgen.cover_genai import generate_cover
+
+# Generate album art and save to target path
+cover_path = generate_cover(
+    title="Cybernetic Symphony",
+    artist="Radgram AI",
+    out="exports/covers/cyber_cover.png"
+)
+print("Generated cover art saved at:", cover_path)
+
+```
+
+
+* **CLI Usage:**
+```bash
+python -m radgram.cli compose --title "Cyber Journey" --artist "Radgram AI"
+# (The cover is automatically generated and bound during album/composition workflows)
+
+```
+
+
+
+---
+
+### C. Website & Static Export Pipelines (`radgram.pipeline.album_site`)
+
+Builds fully responsive static web portfolios or landing pages for albums, allowing instant publishing of music releases.
+
+* **Python Usage:**
+```python
+from radgram.pipeline.album_site import build_album_website
+
+db_path = "radgram.sqlite3"
+album_guid = "your-album-guid-here"
+
+# Build static website files for the album
+site_dir = build_album_website(db_path, album_guid, out_dir="exports/album_site")
+print("Album website generated at:", site_dir)
+
+```
+
+
+* **CLI Usage:**
+```bash
+python -m radgram.cli album-website --album-guid <ALBUM_GUID> --out exports/album_site
+
+```
+
+
+
+---
+
+### D. Streaming Manifests & Base64 Export (`radgram.stream.base64_stream`)
+
+Encodes audio tracks and generates stream manifests suitable for embedding players or offline transmission.
+
+* **Python Usage:**
+```python
+from radgram.stream.base64_stream import get_album_stream_manifest
+
+db_path = "radgram.sqlite3"
+album_guid = "your-album-guid-here"
+
+# Retrieve stream manifest with base64 encoded chunks
+manifest = get_album_stream_manifest(db_path, album_guid)
+print("Stream Manifest Loaded for tracks:", len(manifest.get("tracks", [])))
+
+```
+
+
+* **CLI Usage:**
+```bash
+python -m radgram.cli stream-manifest --album-guid <ALBUM_GUID>
+
+```
+
+
+
+---
+
+### E. Custom Disk Packaging (`radgram.core.raddisk`)
+
+Bundles complete albums, licenses, and media files into proprietary **RadDisk** containers (`.raddisk`) for secure distribution.
+
+* **Python Usage:**
+```python
+from radgram.core.raddisk import export_raddisk
+
+db_path = "radgram.sqlite3"
+album_guid = "your-album-guid-here"
+
+# Export album into a RadDisk image package
+raddisk_path = export_raddisk(db_path, album_guid, out_dir="exports/raddisks", license="RADGRAM-DEMO-LICENSE")
+print("RadDisk successfully exported to:", raddisk_path)
+
+```
+
+
+* **CLI Usage:**
+```bash
+python -m radgram.cli export-raddisk --album-guid <ALBUM_GUID> --out exports/raddisks --license "RADGRAM-LICENSE-KEY"
+
+```
