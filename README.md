@@ -1,4 +1,6 @@
-# 🎼 RADGRAM
+
+
+### 🎼 RADGRAM
 
 ![Python RADGRAM_RAG_GENAI Logo](./assets/radgram_cover.gif)
 
@@ -15,7 +17,8 @@ RADGRAM is available on PyPI:
 
 ```bash
 #pip install radgram_v1 [obs:underconstruction - please wait for release - have a nice day]
-````
+
+```
 
 ---
 
@@ -24,6 +27,9 @@ RADGRAM is available on PyPI:
 * 📄 **Reads sheet music** from PDF files, scanned images, and `.rad` text files
 * 🧠 **AI-powered music generation** based on photos, prompts, and commands
 * 🎼 **Audio rendering and export** to formats like `.mp3`, `.ogg`, `.wav`, `.flac`, `.mp4`
+* 🎛️ **Neural Audio Compression & Studio Codecs** for high-fidelity local processing (Suno/EnCodec compatible)
+* 🎸 **Smart Extractor Modules** for slicing instrument samples (guitar, sax) and vocal phonemes
+* ⚡ **OpenVINO Hardware Acceleration** for high-performance local AI inference (CPU, GPU, NPU)
 * 🛠️ **Automatic mastering** module for optimized audio quality
 * 🎨 **Cover art generation** using GEN-AI to visually accompany compositions
 * 🗃️ **Media and catalog management**, including volume tracking and archiving
@@ -35,16 +41,19 @@ RADGRAM is available on PyPI:
 
 ## 🗺️ Roadmap
 
-| Stage                      | Status           | Description                                                |
-| -------------------------- | --------------   | ---------------------------------------------------------- |
-| PDF Sheet Music Reader     | ✅ Completed    | OCR-based extraction and musical structure interpretation  |
-| `.rad` File Support        | ✅ Completed    | Native parsing for RADGRAM text formats                    |
-| Audio Export (All Formats) | ⚙️ In Progress  | Support for MP3, OGG, WAV, FLAC, and MP4 formats           |
-| Composition from Images    | ✅ Completed    | Generate music inspired by photographs                     |
-| Audio Mastering Module     | ⚙️ In Progress  | Auto-EQ, compression, volume leveling, and final mastering |
-| GEN-AI Cover Art           | ⚙️ In Progress  | Generate custom artwork for tracks or albums               |
-| Media Management System    | ✅ Completed    | Cataloging and metadata tagging tools                      |
-| Web/CLI Interface          | 🔜 Planned      | Web-based and CLI-based authoring tools                    |
+| Stage | Status | Description |
+| --- | --- | --- |
+| PDF Sheet Music Reader | ✅ Completed | OCR-based extraction and musical structure interpretation |
+| `.rad` File Support | ✅ Completed | Native parsing for RADGRAM text formats |
+| Neural Audio & Codecs | ✅ Completed | High-fidelity compression and vector quantization |
+| Sample & Phoneme Slicer | ✅ Completed | Automated instrument note slicing and vocal phonemes |
+| OpenVINO Engine Integration | ✅ Completed | Local hardware-accelerated generative pipelines |
+| Audio Export (All Formats) | ⚙️ In Progress | Support for MP3, OGG, WAV, FLAC, and MP4 formats |
+| Composition from Images | ✅ Completed | Generate music inspired by photographs |
+| Audio Mastering Module | ⚙️ In Progress | Auto-EQ, compression, volume leveling, and final mastering |
+| GEN-AI Cover Art | ⚙️ In Progress | Generate custom artwork for tracks or albums |
+| Media Management System | ✅ Completed | Cataloging and metadata tagging tools |
+| Web/CLI Interface | 🔜 Planned | Web-based and CLI-based authoring tools |
 
 ---
 
@@ -58,9 +67,12 @@ radgram/
 ├── mastering/
 ├── catalog/
 ├── artgen/
+├── extractor/         # Instrument sample slicer & vocal phoneme extractor
+├── openvino_engine/   # OpenVINO optimization & neural audio codecs
 ├── manual/
 │   └── readme.md
 └── examples/
+
 ```
 
 ---
@@ -68,7 +80,7 @@ radgram/
 ## 📘 Command Manual
 
 Full usage guide and examples:
-👉 [`./manual/readme.md`](./manual/readme.md)
+👉 [`./manual/readme.md`](https://www.google.com/search?q=./manual/readme.md)
 
 ---
 
@@ -85,7 +97,7 @@ It is tailored for contemporary composers and generative AI developers looking t
 
 ---
 
-## RADGRAM PIPELINE COMMNADS
+## RADGRAM PIPELINE COMMANDS
 
 ```bash
 python -m radgram.cli --help
@@ -108,7 +120,6 @@ python -m radgram.cli update
 # ------------------------------------------------------------------------------
 # DATABASE
 # ------------------------------------------------------------------------------
-
 
 python -m radgram.cli init-db
 
@@ -158,13 +169,31 @@ python -m radgram.cli import-source \
     --file composition.rad
 
 python -m radgram.cli import-source \
-    --url https://www.cifraclub.com.br/song
+    --url [https://www.cifraclub.com.br/song](https://www.cifraclub.com.br/song)
 
 python -m radgram.cli import-source \
-    --url https://tabs.ultimate-guitar.com/song
+    --url [https://tabs.ultimate-guitar.com/song](https://tabs.ultimate-guitar.com/song)
 
 python -m radgram.cli import-source \
-    --url https://musescore.com/user/song
+    --url [https://musescore.com/user/song](https://musescore.com/user/song)
+
+
+# ------------------------------------------------------------------------------
+# EXTRACTION & OPENVINO ENGINE (NEW)
+# ------------------------------------------------------------------------------
+
+python -m radgram.cli extract-samples \
+    --input solo_guitar.wav \
+    --instrument Guitar \
+    --output samples/guitar/
+
+python -m radgram.cli extract-phonemes \
+    --input vocal_track.mp3 \
+    --output samples/phonemes/
+
+python -m radgram.cli compose-openvino \
+    --prompt "Lo-fi Hip Hop beats" \
+    --device GPU
 
 
 # ------------------------------------------------------------------------------
@@ -208,10 +237,10 @@ python -m radgram.cli web-search \
     --query "Bossa Nova Chords"
 
 python -m radgram.cli web-import \
-    --url https://www.songsterr.com/
+    --url [https://www.songsterr.com/](https://www.songsterr.com/)
 
 python -m radgram.cli web-import \
-    --url https://www.cifraclub.com.br/
+    --url [https://www.cifraclub.com.br/](https://www.cifraclub.com.br/)
 
 
 # ------------------------------------------------------------------------------
@@ -625,16 +654,19 @@ python -m radgram.cli serve-web
 python -m radgram.cli serve-stream
 
 python -m radgram.cli serve-api
+
 ```
 
 ## 📬 Contact
 
 Questions, feedback, or contributions?
-✉️ [eusmool@gmail.com](mailto:eusmool@gmail.com)
+✉️ [eusmool@gmail.com](https://www.google.com/search?q=mailto%3Aeusmool%40gmail.com)
 
 ---
 
 > ⚠️ **This project is under active development.**
 > Stay tuned for updates and new features in the repository.
+
+```
 
 ```
