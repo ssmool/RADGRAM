@@ -657,6 +657,75 @@ python -m radgram.cli serve-api
 
 ```
 
+---
+
+## 🌐 Radgram OpenVINO API (Access via URL / `curl`)
+
+Radgram now features an integrated API server powered by **FastAPI**, allowing you to access generative AI features, neural audio compression, and stem separation directly via HTTP requests or `curl` commands.
+
+### How to Start the API
+
+You can start the API server using the command-line interface (`cli.py`):
+
+```bash
+python -m radgram.cli serve --api --port 8000
+
+```
+
+---
+
+### Available Endpoints
+
+#### 1. Text, Score, and Tablature Generation
+
+* **URL:** `POST /api/generate`
+* **Description:** Generates musical content, lyrics, or structured notations (MusicXML/ABC and Tablatures) using OpenVINO hardware acceleration.
+
+**Example usage with `curl`:**
+
+```bash
+curl -X POST "http://localhost:8000/api/generate" \
+     -F "prompt=Symphonic metal intro in E minor" \
+     -F "max_tokens=256" \
+     -F "temperature=0.7" \
+     -F "mode=Sheet Music (MusicXML/ABC)"
+
+```
+
+---
+
+#### 2. Neural Audio Compression (Studio Quality)
+
+* **URL:** `POST /api/compress-audio`
+* **Description:** Compresses audio files using neural vector quantization (EnCodec-compatible standard) for high-fidelity local processing.
+
+
+
+**Example usage with `curl`:**
+
+```bash
+curl -X POST "http://localhost:8000/api/compress-audio" \
+     -F "file=@path/to/audio.wav"
+
+```
+
+---
+
+#### 3. Stem Separation
+
+* **URL:** `POST /api/separate-stems`
+* **Description:** Isolates vocals, drums, bass, and accompaniment from an audio track locally.
+
+
+
+**Example usage with `curl`:**
+
+```bash
+curl -X POST "http://localhost:8000/api/separate-stems" \
+     -F "file=@path/to/full_track.wav"
+
+```
+
 ## 📬 Contact
 
 Questions, feedback, or contributions?
