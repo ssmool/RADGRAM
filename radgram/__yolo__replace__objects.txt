@@ -1,0 +1,58 @@
+def apply_accessory(frame, x, y, w, h, accessory_img_path):
+    """
+    Overlays a transparent PNG accessory onto the frame based on YOLO coordinates.
+    The accessory placement logic here is a simplification (e.g., placing a hat 
+    on the top of the bounding box).
+    """
+    # Load accessory (must be RGBA/transparent PNG)
+    try:
+        accessory = cv2.imread(accessory_img_path, cv2.IMREAD_UNCHANGED)
+    except:
+        print(f"Accessory file {accessory_img_path} not found.")
+        return frame # Return original frame if load fails
+
+    if accessory is None or accessory.shape[2] < 4:
+        # Accessory must have an alpha channel
+        return frame
+        
+    # Example: Scale accessory to fit the width of the detected person's head/upper body
+    # For a hat, maybe scale to 80% of the body width (w)
+    acc_width = int(w * 0.8) 
+    acc_height = int(accessory.shape[0] * (acc_width / accessory.shape[1]))
+    
+    accessory_resized = cv2.resize(accessory, (acc_width, acc_height), 
+                                   interpolation=cv2.INTER_AREA)
+
+    # Calculate the position for the accessory (e.g., centered near the top of the box)
+    # This placement logic needs refinement based on the specific accessory (face vs body)
+    acc_x = x + int((w - acc_width) / 2)
+    acc_y = y - int(acc_height * 0.5) # Place above the detected top y-coordinate
+    
+    # Define the region of interest (ROI) where the accessory will be placed
+    # Clamp coordinates to ensure they are within frame boundaries
+    y1, y2 = max(0, acc_y), min(frame.shape[0], acc_y + acc_height)
+    x1, x2 = max(0, acc_x), min(frame.shape[1], acc_x + acc_width)
+
+    # Get the accessory part that fits within the frame
+    acc_part = accessory_resized[y1 - acc_y:y2 - acc_y, x1 - acc_x:x2 - acc_x]
+    
+    if acc_part.size == 0:
+        return frame
+        
+    # Separate the color and alpha channels
+    acc_color = acc_part[:, :, :3]
+    acc_alpha = acc_part[:, :, 3] / 255.0
+
+    # Create 3-channel masks
+    alpha_mask = cv2.merge([acc_alpha, acc_alpha, acc_alpha])
+    inv_alpha_mask = 1.0 - alpha_mask
+
+    # Combine: (1) Frame area * inverted mask + (2) Accessory * mask
+    roi = frame[y1:y2, x1:x2]
+    
+    frame_bg = (roi * inv_alpha_mask).astype(np.uint8)
+    frame_fg = (acc_color * alpha_mask).astype(np.uint8)
+
+    frame[y1:y2, x1:x2] = cv2.add(frame_bg, frame_fg)
+
+    return frame

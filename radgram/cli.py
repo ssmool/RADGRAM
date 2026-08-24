@@ -1,127 +1,238 @@
-# radgram/cli.py
-import argparse, json
-from radgram.maestro.composer import compose, compose_to_db
-from radgram.maestro.instruments_db import MaestroInstrumentManager
-from radgram.catalog.db import Catalog
-from radgram.artgen.cover_genai import generate_cover
-from radgram.mastering.master import master_chain, trim
-from radgram.core.drm import create_drm_package, verify_drm_package
-from radgram.core.raddisk import export_raddisk
-from radgram.vision.importer import import_music_source
-from radgram.album.album_builder import create_album, add_track_file, album_from_sources, album_from_tracks
-from radgram.pipeline.album_site import build_album_website
-from radgram.stream.base64_stream import get_album_stream_manifest
-from radgram.jam.session import create_jam, add_chord_event, add_note_event, list_jams
+import argparse
+import json
+import cv2
 
-# Importações dos novos módulos de extração e OpenVINO
-from radgram import InstrumentSampleSlicer, PhonemeExtractor, OpenVINOMusicCore
+# RADCAM Core Components
+from radcam.segmenters import RembgSegmenter, YOLOSegmenter
+from radcam.assets import GIFAssetManager, AccessoryManager, MediaScraper, VideoProcessor
+from radcam.compositor import Compositor
+from radcam.ai_rag.bing_rag import BingImageRAG
+from radcam.ai_rag.interpolator import PartInterpolator
+from radcam.fx import HollywoodFXEngine, SmartCropper
 
-def print_json(data): print(json.dumps(data, indent=2, ensure_ascii=False))
+# AI Brain & Batch Engine
+from radcam.ai_brain.gemini_client import GeminiRADCAMBrain
+from radcam.automation.batch_processor import BatchRenderEngine
+
+# External Integrations: Babel-World (Subtitles) & RADGRAM (AI Audio)
+from radcam.automation.subtitles import SubtitleEngine
+from radcam.audio.radgram_engine import RADGRAMAudioComposer
+
 
 def main():
-    ap=argparse.ArgumentParser('radgram')
-    ap.add_argument('--db', default='radgram.sqlite3', help='SQLite database path')
-    sub=ap.add_subparsers(dest='cmd')
-    sub.add_parser('init-db')
-    c=sub.add_parser('compose')
-    c.add_argument('--title',default='Untitled'); c.add_argument('--artist',default='Radgram AI'); c.add_argument('--album',default='RADGRAM Sessions')
-    c.add_argument('--progression',nargs='*',default=['C','Am','F','G']); c.add_argument('--out',default='exports/song'); c.add_argument('--bpm',type=int,default=96)
-    c.add_argument('--instrument', default='Piano'); c.add_argument('--save-db', action='store_true')
-    addi=sub.add_parser('add-instrument'); addi.add_argument('name'); addi.add_argument('--family',default=''); addi.add_argument('--description',default=''); addi.add_argument('--midi-program',type=int); addi.add_argument('--volume',type=float,default=1.0); addi.add_argument('--pan',type=float,default=0.0)
-    adds=sub.add_parser('add-sample'); adds.add_argument('instrument'); adds.add_argument('label'); adds.add_argument('wav_path'); adds.add_argument('--note',default=''); adds.add_argument('--chord',default=''); adds.add_argument('--library',default='radgram_library/instruments'); adds.add_argument('--no-copy',action='store_true')
-    lp=sub.add_parser('list-instruments'); lp.add_argument('--samples', action='store_true'); lp.add_argument('--instrument')
-    preset=sub.add_parser('preset'); preset.add_argument('name'); preset.add_argument('--style',default='cinematic'); preset.add_argument('--bpm',type=int,default=96); preset.add_argument('--key',default='C'); preset.add_argument('--progression', nargs='*', default=['C','Am','F','G']); preset.add_argument('--instruments', nargs='*', default=['Piano'])
-    album=sub.add_parser('album-create'); album.add_argument('--artist',required=True); album.add_argument('--title',required=True); album.add_argument('--description',default=''); album.add_argument('--year',type=int,default=2026); album.add_argument('--genre',default='AI Music'); album.add_argument('--cover',default='')
-    at=sub.add_parser('album-add-track'); at.add_argument('--album-guid',required=True); at.add_argument('--title',required=True); at.add_argument('--file',default=''); at.add_argument('--rad',default=''); at.add_argument('--number',type=int,default=1); at.add_argument('--author',default=''); at.add_argument('--bpm',type=int,default=96); at.add_argument('--key',default='C'); at.add_argument('--chords',nargs='*',default=['C','Am','F','G'])
-    aft=sub.add_parser('album-from-tracks'); aft.add_argument('--artist',required=True); aft.add_argument('--title',required=True); aft.add_argument('tracks',nargs='+'); aft.add_argument('--out',default='exports/albums'); aft.add_argument('--genre',default='AI Music')
-    afs=sub.add_parser('album-from-sheets'); afs.add_argument('--artist',required=True); afs.add_argument('--title',required=True); afs.add_argument('sources',nargs='+'); afs.add_argument('--out',default='exports/albums'); afs.add_argument('--instrument',default='Piano')
-    sub.add_parser('library-list')
-    site=sub.add_parser('album-website'); site.add_argument('--album-guid',required=True); site.add_argument('--out',default='exports/album_site')
-    man=sub.add_parser('stream-manifest'); man.add_argument('--album-guid',required=True)
-    rd=sub.add_parser('export-raddisk'); rd.add_argument('--album-guid',required=True); rd.add_argument('--out',required=True); rd.add_argument('--license',default='RADGRAM-DRM-DEMO')
-    jam=sub.add_parser('jam-create'); jam.add_argument('--title',required=True); jam.add_argument('--description',default=''); jam.add_argument('--album-guid'); jam.add_argument('--bpm',type=int,default=96); jam.add_argument('--key',default='C')
-    je=sub.add_parser('jam-add'); je.add_argument('--jam-guid',required=True); je.add_argument('--user',default='guest'); je.add_argument('--chord'); je.add_argument('--note'); je.add_argument('--bar',type=int,default=1); je.add_argument('--duration',type=float,default=1.0); je.add_argument('--instrument',default='Piano')
-    sub.add_parser('jam-list')
-    m=sub.add_parser('master'); m.add_argument('input'); m.add_argument('out')
-    t=sub.add_parser('trim'); t.add_argument('input'); t.add_argument('out'); t.add_argument('--seconds',type=int,default=15)
-    d=sub.add_parser('drm'); d.add_argument('input'); d.add_argument('out')
-    i=sub.add_parser('import-source'); i.add_argument('source'); i.add_argument('--ocr', action='store_true'); i.add_argument('--lang', default='eng'); i.add_argument('--out')
+    parser = argparse.ArgumentParser(description="RADCAM CLI Video Studio & GenAI Engine")
     
-    # NOVOS COMANDOS ADICIONADOS AO CLI
-    es = sub.add_parser('extract-samples')
-    es.add_argument('--input', required=True, help='Input audio file path (e.g., solo_guitar.wav)')
-    es.add_argument('--instrument', required=True, help='Instrument name (e.g., Guitar, Sax)')
-    es.add_argument('--output', required=True, help='Output directory for samples')
+    # ---------------------------------------------------------
+    # CLI Arguments & Flags Configuration
+    # ---------------------------------------------------------
+    # AI Brain & Automation
+    parser.add_argument("--prompt", type=str, default=None, help="Natural language prompt for Gemini AI scene orchestration")
+    parser.add_argument("--render-input", type=str, default=None, help="Input video path for automated offline rendering (Batch Mode)")
+    
+    # Audio & Subtitle Integrations (RADGRAM & Babel-World)
+    parser.add_argument("--subtitles", action="store_true", help="Generate automated dynamic subtitles using Babel-World")
+    parser.add_argument("--radgram-bg", type=str, default=None, help="Generate AI soundtrack using RADGRAM based on prompt")
+    
+    # Aspect Ratio & Cropping
+    parser.add_argument("--crop-9-16", action="store_true", help="Enable dynamic 9:16 vertical auto-cropping for Shorts/Reels/TikTok")
+    
+    # Segmentation & Detection
+    parser.add_argument("--engine", choices=["rembg", "yolo"], default="rembg", help="Primary background removal engine")
+    parser.add_argument("--use-yolo-fx", action="store_true", help="Enable YOLO detection for object/accessory tracking")
+    parser.add_argument("--target-object", type=str, default=None, help="Specific COCO object class to filter in YOLO (e.g., 'laptop', 'chair')")
+    
+    # Background Sources
+    parser.add_argument("--bg-image", type=str, default=None, help="Path to static background image")
+    parser.add_argument("--gif-search", type=str, default=None, help="Search for animated GIF on Giphy")
+    parser.add_argument("--video-bg", type=str, default=None, help="Path to local video file (.mp4, .avi, .mkv, .mov, .gif)")
+    parser.add_argument("--scrape-url", type=str, default=None, help="Scrape video from URL and set as background")
+    
+    # RAG & GenAI
+    parser.add_argument("--build-rag", type=str, default=None, help="Path to .csv or .txt file containing target lists for Bing Deep Search RAG")
+    parser.add_argument("--accessory", type=str, default=None, help="Path to overlay accessory/object PNG image")
+    
+    # Cinematic Effects & Output
+    parser.add_argument("--hollywood-fx", action="store_true", help="Apply Hollywood-style post-processing (Skin Beautify + Teal & Orange)")
+    parser.add_argument("--output", type=str, default="radcam_output.mp4", help="Output recording file path")
 
-    ep = sub.add_parser('extract-phonemes')
-    ep.add_argument('--input', required=True, help='Input vocal track path (.mp3 or .ogg)')
-    ep.add_argument('--output', required=True, help='Output directory for phonemes')
+    args = parser.parse_args()
 
-    co = sub.add_parser('compose-openvino')
-    co.add_argument('--prompt', required=True, help='Musical style prompt')
-    co.add_argument('--device', default='CPU', help='Hardware device (CPU, GPU, NPU)')
+    # ---------------------------------------------------------
+    # 0. Gemini AI Brain Scene Orchestration
+    # ---------------------------------------------------------
+    if args.prompt:
+        print(f"\n[RADCAM Brain] Processing intent with Gemini AI: '{args.prompt}'...")
+        try:
+            brain = GeminiRADCAMBrain()
+            ai_config = brain.plan_video_timeline(args.prompt)
+            print(f"[RADCAM Brain] Generated Configuration:\n{json.dumps(ai_config, indent=2)}\n")
+            
+            # Override CLI flags with AI decisions
+            if ai_config.get("background_query"):
+                args.gif_search = ai_config["background_query"]
+            if ai_config.get("fx_pipeline"):
+                args.hollywood_fx = True
+        except Exception as e:
+            print(f"[RADCAM Brain Error] Failed to query Gemini API: {e}")
 
-    sub.add_parser('export-db-json')
-    
-    # COMANDO SERVE ATUALIZADO COM SUPORTE A API
-    serve_parser = sub.add_parser('serve', help='Inicia a interface web ou o servidor da API')
-    serve_parser.add_argument('--api', action='store_true', help='Inicia o servidor FastAPI (para curl/URL)')
-    serve_parser.add_argument('--host', default='0.0.0.0', help='Endereço de host')
-    serve_parser.add_argument('--port', type=int, default=7860, help='Porta do servidor')
-    
-    args=ap.parse_args()
-    
-    if args.cmd=='init-db': Catalog(args.db); print(f'{args.db} created')
-    elif args.cmd=='compose':
-        if args.save_db:
-            result=compose_to_db(args.title,args.artist,args.album,progression=args.progression,bpm=args.bpm,out_dir=args.out,instrument=args.instrument,db=args.db); result['cover']=generate_cover(args.title,args.artist,out=f'{args.out}/cover.png'); print_json(result)
+    # ---------------------------------------------------------
+    # 1. RADGRAM AI Audio & Babel-World Pre-Processing
+    # ---------------------------------------------------------
+    if args.radgram_bg:
+        print(f"\n[RADGRAM Engine] Composing custom soundtrack...")
+        RADGRAMAudioComposer.compose_soundtrack_from_prompt(args.radgram_bg)
+
+    if args.subtitles and args.render_input:
+        print(f"\n[Babel-World] Extracting speech and generating subtitles...")
+        sub_engine = SubtitleEngine(calibrate=False)
+        transcripts = sub_engine.process_media_subtitles(args.render_input)
+        print(f"[Babel-World] Subtitles successfully extracted: {transcripts}")
+
+    # ---------------------------------------------------------
+    # 2. Batch Video Rendering Offline (Mode execution)
+    # ---------------------------------------------------------
+    if args.render_input:
+        print(f"\n[RADCAM Automation] Starting autonomous batch video rendering...")
+        
+        timeline_config = {
+            "timeline": [
+                {
+                    "start": 0.0,
+                    "end": 9999.0,  # Applies to the full video duration
+                    "bg_query": args.gif_search or "cyberpunk city",
+                    "fx": ["teal_orange", "beautify"] if args.hollywood_fx else []
+                }
+            ]
+        }
+        
+        batch_engine = BatchRenderEngine(timeline_config=timeline_config)
+        batch_engine.render_video(input_video_path=args.render_input, output_video_path=args.output)
+        print(f"[RADCAM Automation] Autonomous video exported successfully to: {args.output}\n")
+        return  # Exit without launching live webcam window
+
+    # ---------------------------------------------------------
+    # 3. RAG & Machine Learning Processing (Deep Search + JSON)
+    # ---------------------------------------------------------
+    if args.build_rag:
+        print(f"[RADCAM ML] Starting Bing Deep Search RAG for: {args.build_rag}")
+        rag_json = BingImageRAG.build_universal_rag(args.build_rag)
+        print(f"[RADCAM ML] RAG database successfully generated: {rag_json}")
+
+    # 4. Initialize Segmenters & Detectors
+    rembg_seg = RembgSegmenter() if args.engine == "rembg" else None
+    yolo_detector = YOLOSegmenter() if (args.engine == "yolo" or args.use_yolo_fx) else None
+
+    # 5. Load Background Layers
+    bg_frames = []
+    bg_idx = 0
+    bg_static = cv2.imread(args.bg_image) if args.bg_image else None
+
+    if args.scrape_url:
+        print(f"[RADCAM Scraper] Downloading and converting media from: {args.scrape_url}")
+        gif_path = MediaScraper.url_to_gif(args.scrape_url, "temp_scraped_bg.gif")
+        bg_frames = VideoProcessor.extract_frames(gif_path)
+    elif args.video_bg:
+        print(f"[RADCAM Video] Loading local file: {args.video_bg}")
+        bg_frames = VideoProcessor.extract_frames(args.video_bg)
+    elif args.gif_search:
+        gif_url = GIFAssetManager.search_giphy(args.gif_search)
+        if gif_url:
+            print(f"[RADCAM Giphy] Loaded GIF from: {gif_url}")
+            bg_frames = GIFAssetManager.load_gif_or_video_frames(gif_url)
+
+    # 6. Open Primary Webcam Capture
+    cap = cv2.VideoCapture(0)
+    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+
+    # Adjust output dimensions if 9:16 Cropping is enabled
+    out_w, out_h = (1080, 1920) if args.crop_9_16 else (w, h)
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = None
+    is_recording = False
+
+    print("\n--- RADCAM Studio Active ---")
+    print("Controls: [R] Start/Stop Recording | [Q] Quit\n")
+
+    # 7. Main Interactive Rendering & Processing Loop
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # A. Dynamic Background Layer Selection
+        if bg_frames:
+            current_bg = bg_frames[bg_idx % len(bg_frames)]
+            bg_idx += 1
+        elif bg_static is not None:
+            current_bg = bg_static
         else:
-            project,wav=compose(args.title,args.artist,progression=args.progression,bpm=args.bpm,out_dir=args.out); cover=generate_cover(args.title,args.artist,out=f'{args.out}/cover.png'); print_json({'rad':project.to_json(),'wav':str(wav),'cover':cover})
-    elif args.cmd=='add-instrument': print_json({'instrument_guid':MaestroInstrumentManager(args.db).add_instrument(args.name,args.family,args.description,args.midi_program,args.volume,args.pan)})
-    elif args.cmd=='add-sample': print_json({'sample_guid':MaestroInstrumentManager(args.db,args.library).install_sample(args.instrument,args.label,args.wav_path,note=args.note,chord=args.chord,copy=not args.no_copy)})
-    elif args.cmd=='list-instruments':
-        mgr=MaestroInstrumentManager(args.db); print_json(mgr.list_samples(args.instrument) if args.samples else mgr.list_instruments())
-    elif args.cmd=='preset': print_json({'preset_guid':MaestroInstrumentManager(args.db).configure_preset(args.name,args.instruments,args.progression,args.style,args.bpm,args.key)})
-    elif args.cmd=='album-create': print_json(create_album(args.db,args.artist,args.title,args.description,args.year,args.genre,args.cover))
-    elif args.cmd=='album-add-track': print_json({'track_guid':add_track_file(args.db,args.album_guid,args.title,args.file,args.rad,args.number,args.author,args.bpm,args.key,args.chords)})
-    elif args.cmd=='album-from-tracks': print_json(album_from_tracks(args.db,args.artist,args.title,args.tracks,args.out,args.genre))
-    elif args.cmd=='album-from-sheets': print_json(album_from_sources(args.db,args.artist,args.title,args.sources,args.out,args.instrument))
-    elif args.cmd=='library-list': print_json(Catalog(args.db).library())
-    elif args.cmd=='album-website': print_json({'index':build_album_website(args.db,args.album_guid,args.out)})
-    elif args.cmd=='stream-manifest': print_json(get_album_stream_manifest(args.db,args.album_guid))
-    elif args.cmd=='export-raddisk': print_json(export_raddisk(args.db,args.album_guid,args.out,args.license))
-    elif args.cmd=='jam-create': print_json({'jam_guid':create_jam(args.db,args.title,args.description,args.album_guid,args.bpm,args.key)})
-    elif args.cmd=='jam-add':
-        if args.chord: print_json({'event_guid':add_chord_event(args.db,args.jam_guid,args.user,args.chord,args.bar,args.instrument)})
-        elif args.note: print_json({'event_guid':add_note_event(args.db,args.jam_guid,args.user,args.note,args.duration,args.instrument)})
-        else: print_json({'error':'use --chord or --note'})
-    elif args.cmd=='jam-list': print_json(list_jams(args.db))
-    elif args.cmd=='master': print(master_chain(args.input,args.out))
-    elif args.cmd=='trim': print(trim(args.input,args.out,duration=args.seconds))
-    elif args.cmd=='drm': print(create_drm_package(args.input,args.out), verify_drm_package(args.out))
-    elif args.cmd=='import-source':
-        data=import_music_source(args.source, ocr=args.ocr, lang=args.lang); text=json.dumps(data, indent=2, ensure_ascii=False)
-        if args.out: open(args.out,'w',encoding='utf-8').write(text); print(args.out)
-        else: print(text)  
-    elif args.cmd=='extract-samples':
-        slicer = InstrumentSampleSlicer()
-        print_json(slicer.slice_instrument_track(args.input, args.instrument, args.output))
-    elif args.cmd=='extract-phonemes':
-        extractor = PhonemeExtractor()
-        print_json(extractor.extract_phonemes_from_audio(args.input))
-    elif args.cmd=='compose-openvino':
-        core = OpenVINOMusicCore(device=args.device)
-        print_json(core.optimize_and_run_generation(args.prompt, style="OpenVINO Generated"))
+            current_bg = cv2.blur(frame, (25, 25))
 
-    elif args.cmd=='export-db-json': print_json(Catalog(args.db).export_json())
-    elif args.cmd=='serve':
-        if args.api:
-            import uvicorn
-            print(f"Iniciando API Radgram (FastAPI) em http://{args.host}:{args.port}...")
-            uvicorn.run("radgram.web.api:app", host=args.host, port=args.port, reload=True)
+        # B. Primary Segmentation
+        if rembg_seg:
+            fg_person, mask_3ch = rembg_seg.process_frame(frame)
         else:
-            from radgram.web.app import run
-            run()
-    else: ap.print_help()
+            fg_person = frame
+            mask_3ch = None
 
-if __name__=='__main__': main()
+        # C. YOLO Detection & Object/Accessory Anchoring
+        if yolo_detector and args.accessory:
+            if args.target_object:
+                detections = yolo_detector.detect_all_objects(frame, target_class=args.target_object)
+                boxes = [d["bbox"] for d in detections]
+            else:
+                boxes = yolo_detector.detect_persons(frame)
+
+            for box in boxes:
+                fg_person = AccessoryManager.apply_accessory(fg_person, box, args.accessory)
+
+        # D. Layer Compositing
+        if mask_3ch is not None:
+            final_frame = Compositor.blend(fg_person, current_bg, mask_3ch)
+        else:
+            final_frame = fg_person
+
+        # E. Hollywood FX Layer (Post-Processing)
+        if args.hollywood_fx:
+            final_frame = HollywoodFXEngine.plastic_skin_beautify(final_frame)
+            final_frame = HollywoodFXEngine.color_grade_hollywood(final_frame)
+
+        # F. Smart Auto-Crop to 9:16 (If enabled)
+        if args.crop_9_16:
+            final_frame = SmartCropper.crop_to_9_16(final_frame)
+
+        # G. On-Screen Interface & Video Recording
+        status = "REC" if is_recording else "LIVE"
+        cv2.putText(final_frame, status, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) if is_recording else (0, 255, 0), 2)
+        cv2.imshow("RADCAM Studio", final_frame)
+
+        if is_recording and out:
+            out.write(final_frame)
+
+        # H. Keyboard Input Handling
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('r'):
+            if not is_recording:
+                out = cv2.VideoWriter(args.output, fourcc, fps, (out_w, out_h))
+                is_recording = True
+                print("--- Recording STARTED ---")
+            else:
+                out.release()
+                out = None
+                is_recording = False
+                print("--- Recording STOPPED ---")
+        elif key == ord('q'):
+            break
+
+    cap.release()
+    if out:
+        out.release()
+        
+    cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
