@@ -48,12 +48,12 @@ RADGRAM is available on PyPI:
 | Neural Audio & Codecs | ✅ Completed | High-fidelity compression and vector quantization |
 | Sample & Phoneme Slicer | ✅ Completed | Automated instrument note slicing and vocal phonemes |
 | OpenVINO Engine Integration | ✅ Completed | Local hardware-accelerated generative pipelines |
-| Audio Export (All Formats) | ⚙️ In Progress | Support for MP3, OGG, WAV, FLAC, and MP4 formats |
+| Audio Export (All Formats) | ✅ Completed | Support for MP3, OGG, WAV, FLAC, and MP4 formats |
 | Composition from Images | ✅ Completed | Generate music inspired by photographs |
-| Audio Mastering Module | ⚙️ In Progress | Auto-EQ, compression, volume leveling, and final mastering |
+| Audio Mastering Module | ✅ Completed | Auto-EQ, compression, volume leveling, and final mastering |
 | GEN-AI Cover Art | ⚙️ In Progress | Generate custom artwork for tracks or albums |
 | Media Management System | ✅ Completed | Cataloging and metadata tagging tools |
-| Web/CLI Interface | 🔜 Planned | Web-based and CLI-based authoring tools |
+| Web/CLI Interface | ✅ Completed | Web-based and CLI-based authoring tools |
 
 ---
 
